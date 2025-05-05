@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# Create Embeddings with Chroma (Persistent)
+# Create Embeddings with Chroma (Persistent) using Langchain
 
 from helper_utils import word_wrap
 from pypdf import PdfReader
-import chromadb
-from chromadb.config import Settings
 from langchain.text_splitter import RecursiveCharacterTextSplitter, SentenceTransformersTokenTextSplitter
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.schema import Document
+import os
+import shutil
 
 # === Step 1: Load PDF ===
 reader = PdfReader("microsoft_annual_report_2022.pdf")
@@ -41,10 +43,7 @@ print(f"\nToken splitting sample (chunk 10):")
 print(word_wrap(token_split_texts[10]))
 print(f"Total token chunks: {len(token_split_texts)}")
 
-# === Step 3: Setup ChromaDB (Persistent) ===
-import os
-import shutil
-
+# === Step 3: Setup ChromaDB (Persistent) with Langchain ===
 # Define an absolute path for the database
 persist_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
 print(f"ChromaDB will be stored at: {persist_directory}")
@@ -57,38 +56,37 @@ if os.path.exists(persist_directory):
 # Create directory
 os.makedirs(persist_directory, exist_ok=True)
 
-# Use PersistentClient directly instead of Client with Settings
-from chromadb import PersistentClient
-chroma_client = PersistentClient(path=persist_directory)
+# Initialize the HuggingFace embeddings
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
-embedding_function = SentenceTransformerEmbeddingFunction()
+# === Step 4: Convert text chunks to Langchain Documents ===
+documents = []
+for i, text_chunk in enumerate(token_split_texts):
+    metadata = {
+        "source": "microsoft_annual_report_2022.pdf",
+        "description": "Microsoft Annual Report 2022",
+        "author": "Microsoft Corporation",
+        "date": "2022-12-31",
+        "chunk_id": f"msft2022_{i}"
+    }
+    doc = Document(page_content=text_chunk, metadata=metadata)
+    documents.append(doc)
 
-# Create or get collection
-chroma_collection = chroma_client.get_or_create_collection(
-    name="microsoft_annual_report_2022",
-    embedding_function=embedding_function
+print(f"Created {len(documents)} Document objects")
+
+# === Step 5: Create Chroma vector store with Langchain ===
+collection_name = "microsoft_annual_report_2022"
+vectordb = Chroma.from_documents(
+    documents=documents,
+    embedding=embedding_model,
+    persist_directory=persist_directory,
+    collection_name=collection_name
 )
 
-# === Step 4: Add Documents to Chroma ===
-metadata = {
-    "source": "microsoft_annual_report_2022.pdf",
-    "description": "Microsoft Annual Report 2022",
-    "author": "Microsoft Corporation",
-    "date": "2022-12-31"
-}
+# Persist the vectorstore
+vectordb.persist()
 
-# Use namespaced IDs to avoid collisions
-ids = [f"msft2022_{i}" for i in range(len(token_split_texts))]
-
-# Add to collection (embedding done automatically)
-chroma_collection.add(
-    documents=token_split_texts,
-    metadatas=[metadata] * len(token_split_texts),
-    ids=ids
-)
-
-# After adding documents to the collection
-print(f"Embeddings created with {chroma_collection.count()} documents")
+# === Step 6: Verify Creation ===
 print(f"Checking directory: {persist_directory}")
 if os.path.exists(persist_directory):
     files = os.listdir(persist_directory)
@@ -101,5 +99,5 @@ else:
     print("ERROR: Directory was not created!")
 
 # === Done ===
-print(f"\nTotal documents embedded in Chroma: {chroma_collection.count()}")
+print(f"\nTotal documents embedded in Chroma: {len(documents)}")
 print("\nEmbedding and persistence completed successfully!")
