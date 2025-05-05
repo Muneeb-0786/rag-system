@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# Query Embeddings with Chroma and RAG
+# Query Embeddings with Chroma and RAG using Langchain
 
 import os
 from helper_utils import word_wrap
-from chromadb import PersistentClient
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 import google.generativeai as genai
 from dotenv import load_dotenv, find_dotenv
 
@@ -14,8 +14,7 @@ from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv())
 genai.configure(api_key=os.environ.get('GEMINI_API_KEY'))
 
-# === Step 1: Connect to Persistent ChromaDB ===
-# Use the same absolute path construction as in create_embeddings.py
+# === Step 1: Connect to Persistent ChromaDB using Langchain ===
 persist_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
 print(f"Connecting to ChromaDB at: {persist_directory}")
 
@@ -25,30 +24,27 @@ if not os.path.exists(persist_directory):
     print("Please run create_embeddings.py first to create the database.")
     exit(1)
 
-# Use PersistentClient directly instead of Client with Settings
-chroma_client = PersistentClient(path=persist_directory)
+# Initialize the HuggingFace embeddings - must match what was used in creation
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
-# Initialize the embedding function (same as used during creation)
-embedding_function = SentenceTransformerEmbeddingFunction()
-
-# Get the existing collection
+# Load the existing vector store
 collection_name = "microsoft_annual_report_2022"
 try:
-    chroma_collection = chroma_client.get_collection(
-        name=collection_name,
-        embedding_function=embedding_function
+    vectordb = Chroma.from_documents(
+        persist_directory=persist_directory,
+        embedding_function=embedding_model,
+        collection_name=collection_name
     )
-    print(f"Connected to collection '{collection_name}' with {chroma_collection.count()} documents")
+    print(f"Connected to collection '{collection_name}'")
 except Exception as e:
     print(f"Error connecting to collection: {e}")
-    print("Available collections:", chroma_client.list_collections())
     exit(1)
 
 # === Step 2: Query Functions ===
 def retrieve_documents(query, n_results=5):
     """Retrieve relevant documents for a given query"""
-    results = chroma_collection.query(query_texts=[query], n_results=n_results)
-    return results['documents'][0]
+    docs = vectordb.similarity_search(query, k=n_results)
+    return [doc.page_content for doc in docs]
 
 def display_retrieved_documents(documents):
     """Display the retrieved documents in a readable format"""
