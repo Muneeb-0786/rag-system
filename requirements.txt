@@ -1,0 +1,19 @@
+langchain>=0.1.0
+langchain_huggingface
+langchain_google_genai
+langchain_community
+faiss-cpu>=1.7.4  # or faiss-gpu for GPU support
+google-generativeai>=0.3.1
+flask>=2.0.0
+flask-cors>=4.0.0
+python-dotenv>=1.0.0
+numpy>=1.24.0
+pypdf
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+tqdm>=4.66.1
+assemblyai>=0.17.0
+sentence-transformers>=2.2.2
+chromadb
+langchain-chroma
+pymupdf>=1.23.0  # Optional for faster PDF processing
