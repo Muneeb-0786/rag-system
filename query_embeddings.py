@@ -196,7 +196,7 @@ def augment_query_generated(query, model="gemini-2.0-flash", num_variations=2):
         
     return augmented_queries
 
-def retrieve_documents(query, n_results=5):
+def retrieve_documents(query, n_results=5, max_return=5):
     """Retrieve relevant documents for a given query using multiple query expansion"""
     # Generate augmented queries
     augmented_queries = augment_query_generated(query)
@@ -216,38 +216,38 @@ def retrieve_documents(query, n_results=5):
         results.append([doc.page_content for doc in docs])
     
     # Deduplicate the retrieved documents
-    unique_documents = set()
-    for documents in results:
-        for document in documents:
-            unique_documents.add(document)
+    unique_documents = list(set(doc for documents in results for doc in documents))
    
+    # Create pairs for cross-encoder scoring
     pairs = []
     for doc in unique_documents:
         pairs.append([query, doc])
 
-
-    # In[ ]:
-
-
+    # Calculate cross-encoder scores
     scores = cross_encoder.predict(pairs)
 
+    print("Cross-encoder scores:")
+    for i, score in enumerate(scores):
+        print(f"Document {i}: {score:.4f}")
 
-    # In[ ]:
+    # Get indices sorted by score in descending order
+    ranked_indices = np.argsort(scores)[::-1]
+    
+    print("Reranked order:")
+    for i, idx in enumerate(ranked_indices):
+        print(f"Rank {i+1}: Document index {idx} (Score: {scores[idx]:.4f})")
 
-
-    print("Scores:")
-    for score in scores:
-        print(score)
-
-
-    # In[ ]:
-
-
-    print("New Ordering:")
-    for o in np.argsort(scores)[::-1]:
-        print(o)
-
-
+    # Rerank the documents and limit to max_return
+    reranked_documents = [unique_documents[i] for i in ranked_indices[:max_return]]
+    print(f"Returning top {max_return} documents based on reranking.")
+    
+    # Display the reranked documents
+    print("\n=== Reranked Documents ===\n")
+    for i, doc in enumerate(reranked_documents):
+        print(f"Document {i+1}:")
+        print(word_wrap(doc))
+        print("\n" + "-"*50 + "\n")
+    
     # Display results for each query
     for i, documents in enumerate(results):
         print(f"Results for Query: {word_wrap(queries[i][:100])}...")
@@ -259,7 +259,7 @@ def retrieve_documents(query, n_results=5):
             print('')
         print('-'*100)
     
-    return list(unique_documents)
+    return reranked_documents
 
 def display_retrieved_documents(documents):
     """Display the retrieved documents in a readable format"""
